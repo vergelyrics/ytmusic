@@ -681,72 +681,9 @@ body {
   <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
-// ===============================
-// YOUTUBE IFRAME API
-// ===============================
-
-let player;
-let playerReady = false;
-
-function onYouTubeIframeAPIReady() {
-
-  player = new YT.Player('yt-player', {
-
-    height: '0',
-    width: '0',
-
-    playerVars: {
-      autoplay: 1,
-      controls: 0,
-      rel: 0,
-      modestbranding: 1
-    },
-
-    events: {
-      onReady: () => {
-
-        playerReady = true;
-
-        console.log('YT Player Ready');
-      },
-
-      onStateChange: onPlayerStateChange
-    }
-  });
-}
-
-// ===============================
-// PLAYER EVENTS
-// ===============================
-
-function onPlayerStateChange(event) {
-
-  // PLAYING
-  if (event.data === YT.PlayerState.PLAYING) {
-
-    document.getElementById('icon-play').style.display = 'none';
-
-    document.getElementById('icon-pause').style.display = '';
-
-    startProgressUpdater();
-  }
-
-  // PAUSED
-  if (event.data === YT.PlayerState.PAUSED) {
-
-    document.getElementById('icon-play').style.display = '';
-
-    document.getElementById('icon-pause').style.display = 'none';
-  }
-
-  // ENDED
-  if (event.data === YT.PlayerState.ENDED) {
-
-    playNextSong();
-  }
-}
-
-// ---- ROUTER ----
+// =========================
+// ROUTER
+// =========================
 
 function goTo(path) {
   history.pushState({}, '', path);
@@ -756,54 +693,38 @@ function goTo(path) {
 window.addEventListener('popstate', handleRoute);
 
 function handleRoute() {
-
   const path = location.pathname;
 
-  // HOME
   if (path === '/') {
     activatePage('home');
     return;
   }
 
-  // SEARCH
   if (path === '/search') {
     activatePage('search');
     return;
   }
 
-  // QUEUE
   if (path === '/queue') {
     activatePage('queue');
     return;
   }
 
-  // ALBUM
   if (path.startsWith('/album/')) {
-
     const id = path.split('/album/')[1];
-
     loadAlbum(id);
-
     return;
   }
 
-  // ARTIST
   if (path.startsWith('/artist/')) {
-
     const id = path.split('/artist/')[1];
-
     loadArtist(id);
-
     return;
   }
 
-  // PLAYLIST
   if (path.startsWith('/playlist/')) {
-
     const id = path.split('/playlist/')[1];
-
     loadPlaylist(id);
-
     return;
   }
 
@@ -811,7 +732,6 @@ function handleRoute() {
 }
 
 function activatePage(page) {
-
   document.querySelectorAll('.page').forEach(p => {
     p.classList.remove('active');
   });
@@ -820,34 +740,113 @@ function activatePage(page) {
     a.classList.remove('active');
   });
 
-  const pageEl =
-    document.getElementById('page-' + page);
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) pageEl.classList.add('active');
 
-  if (pageEl)
-    pageEl.classList.add('active');
-
-  const navEl =
-    document.querySelector(`[data-page="${page}"]`);
-
-  if (navEl)
-    navEl.classList.add('active');
+  const navEl = document.querySelector(`[data-page="${page}"]`);
+  if (navEl) navEl.classList.add('active');
 }
 
-const API =
-  'https://yt-music-api.vergelyrics.workers.dev';
+const API = 'https://yt-music-api.vergelyrics.workers.dev';
 
-// ---- STATE ----
+// =========================
+// STATE
+// =========================
 
 let currentQueue = [];
-
 let currentIndex = -1;
-
 let searchTimer = null;
 
-// ---- Navigation ----
+let ytPlayer = null;
+let playerReady = false;
+
+// =========================
+// YOUTUBE IFRAME API
+// =========================
+
+const ytScript = document.createElement('script');
+ytScript.src = "https://www.youtube.com/iframe_api";
+document.body.appendChild(ytScript);
+
+window.onYouTubeIframeAPIReady = function () {
+  ytPlayer = new YT.Player('youtube-player', {
+    height: '0',
+    width: '0',
+    playerVars: {
+      autoplay: 1,
+      controls: 0,
+      rel: 0
+    },
+    events: {
+      onReady: () => {
+        playerReady = true;
+      },
+      onStateChange: onYTStateChange
+    }
+  });
+};
+
+function onYTStateChange(event) {
+  if (event.data === YT.PlayerState.ENDED) {
+    playNext();
+  }
+
+  if (event.data === YT.PlayerState.PLAYING) {
+    updatePlayPauseIcons(true);
+  }
+
+  if (event.data === YT.PlayerState.PAUSED) {
+    updatePlayPauseIcons(false);
+  }
+}
+
+// =========================
+// HELPERS
+// =========================
+
+function fmtTime(s) {
+  s = Math.floor(s || 0);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+
+  setTimeout(() => {
+    t.classList.remove('show');
+  }, 2500);
+}
+
+function typeLabel(item) {
+  if (!item) return '';
+
+  const map = {
+    song: 'Song',
+    video: 'Video',
+    artist: 'Artist',
+    album: 'Album',
+    ep: 'EP',
+    single: 'Single',
+    playlist: 'Playlist'
+  };
+
+  return map[item.type] || item.type || '';
+}
+
+function updatePlayPauseIcons(isPlaying) {
+  document.getElementById('icon-play').style.display = isPlaying ? 'none' : '';
+  document.getElementById('icon-pause').style.display = isPlaying ? '' : 'none';
+}
+
+// =========================
+// NAVIGATION
+// =========================
 
 function navigate(page) {
-
   const routes = {
     home: '/',
     search: '/search',
@@ -858,742 +857,765 @@ function navigate(page) {
 }
 
 function showDetail() {
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active');
+  });
 
-  document.querySelectorAll('.page')
-    .forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-container a').forEach(a => {
+    a.classList.remove('active');
+  });
 
-  document.querySelectorAll('.nav-container a')
-    .forEach(a => a.classList.remove('active'));
-
-  document.getElementById('page-detail')
-    .classList.add('active');
+  document.getElementById('page-detail').classList.add('active');
 }
 
-// ---- Helpers ----
-
-function img(url, cls='', alt='') {
-
-  if (!url)
-    return `<div class="${cls} card-art-placeholder">♪</div>`;
-
-  return `
-    <img
-      class="${cls}"
-      src="${url}"
-      alt="${alt}"
-      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
-      loading="lazy"
-    >
-
-    <div
-      class="${cls} card-art-placeholder"
-      style="display:none"
-    >
-      ♪
-    </div>
-  `;
-}
-
-function fmtTime(s) {
-
-  s = Math.floor(s || 0);
-
-  const m = Math.floor(s / 60);
-
-  const sec = s % 60;
-
-  return `${m}:${sec.toString().padStart(2,'0')}`;
-}
-
-function toast(msg) {
-
-  const t = document.getElementById('toast');
-
-  t.textContent = msg;
-
-  t.classList.add('show');
-
-  setTimeout(() => {
-    t.classList.remove('show');
-  }, 2500);
-}
-
-function typeLabel(item) {
-
-  if (!item) return '';
-
-  const map = {
-    song:'Song',
-    video:'Video',
-    artist:'Artist',
-    album:'Album',
-    ep:'EP',
-    single:'Single',
-    playlist:'Playlist'
-  };
-
-  return map[item.type] || item.type || '';
-}
-
-// ---- Home ----
+// =========================
+// HOME
+// =========================
 
 async function loadHome() {
-
-  const container =
-    document.getElementById('home-content');
+  const container = document.getElementById('home-content');
 
   try {
+    const sections = await fetch(`${API}/home`).then(r => r.json());
 
-    const sections =
-      await fetch(`${API}/home`)
-      .then(r => r.json());
-
-    if (!Array.isArray(sections) ||
-        sections.length === 0) {
-
-      container.innerHTML =
-        '<div class="empty">Nothing to show.</div>';
-
+    if (!Array.isArray(sections)) {
+      container.innerHTML = '<div class="empty">Nothing found.</div>';
       return;
     }
 
-    container.innerHTML = sections.map(s => {
-
-      if (!s || !s.items || s.items.length === 0)
-        return '';
-
+    container.innerHTML = sections.map(section => {
       return `
         <div class="section">
-
           <div class="section-header">
-            <div class="section-title">
-              ${s.title || 'Picks'}
-            </div>
+            <div class="section-title">${section.title || 'Music'}</div>
           </div>
 
           <div class="card-grid">
-            ${s.items
-              .slice(0,10)
-              .map(item => cardHTML(item))
-              .join('')}
+            ${section.items.map(item => cardHTML(item)).join('')}
           </div>
-
         </div>
       `;
     }).join('');
 
-    container.querySelectorAll('[data-action]')
-      .forEach(el => {
-
-        el.addEventListener('click', () => {
-
-          handleCardClick(
-            JSON.parse(el.dataset.item)
-          );
-        });
+    container.querySelectorAll('[data-action]').forEach(el => {
+      el.addEventListener('click', () => {
+        handleCardClick(JSON.parse(el.dataset.item));
       });
+    });
 
-  } catch(e) {
-
-    container.innerHTML = `
-      <div class="empty">
-        Couldn't load home.
-        ${e.message}
-      </div>
-    `;
+  } catch (e) {
+    container.innerHTML = `<div class="empty">${e.message}</div>`;
   }
 }
 
 function cardHTML(item) {
-
-  if (!item) return '';
-
-  const thumb = item.thumbnail || '';
-
-  const title = item.title || 'Unknown';
-
-  const sub =
-    item.subtitle || typeLabel(item);
-
-  const data =
-    JSON.stringify(item)
-      .replace(/"/g, '&quot;');
+  const data = JSON.stringify(item).replace(/"/g, '&quot;');
 
   return `
-    <div
-      class="card"
-      data-action="open"
-      data-item="${data}"
-    >
-
-      ${
-        thumb
-          ? `<img class="card-art" src="${thumb}" loading="lazy">`
-          : `<div class="card-art-placeholder">♪</div>`
-      }
-
-      <div class="card-play-btn">
-        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-          <polygon points="5,3 19,12 5,21"/>
-        </svg>
-      </div>
+    <div class="card" data-action="open" data-item="${data}">
+      <img class="card-art" src="${item.thumbnail || ''}" loading="lazy">
 
       <div class="card-info">
-
-        <div class="card-name">
-          ${title}
-        </div>
-
-        <div class="card-sub">
-          ${sub}
-        </div>
-
+        <div class="card-name">${item.title || 'Unknown'}</div>
+        <div class="card-sub">${item.subtitle || ''}</div>
       </div>
-
     </div>
   `;
 }
 
-// ---- Card Clicks ----
+// =========================
+// CARD CLICKS
+// =========================
 
 function handleCardClick(item) {
 
-  if (!item) return;
-
-  if (
-    item.type === 'song' ||
-    item.type === 'video'
-  ) {
-
+  if (item.type === 'song' || item.type === 'video') {
     playSong(item.videoId, [item], 0);
+    return;
   }
 
-  else if (
+  if (
     item.type === 'album' ||
     item.type === 'ep' ||
     item.type === 'single'
   ) {
-
     goTo(`/album/${item.browseId}`);
+    return;
   }
 
-  else if (item.type === 'artist') {
-
+  if (item.type === 'artist') {
     goTo(`/artist/${item.browseId}`);
+    return;
   }
 
-  else if (item.type === 'playlist') {
-
+  if (item.type === 'playlist') {
     goTo(`/playlist/${item.playlistId}`);
+    return;
   }
 }
 
-// ---- SEARCH ----
+// =========================
+// SEARCH
+// =========================
 
-document
-.getElementById('search-input')
-.addEventListener('input', function() {
+document.getElementById('search-input').addEventListener('input', function () {
 
   const q = this.value.trim();
 
   clearTimeout(searchTimer);
 
   if (!q) {
-
-    hideSuggestions();
-
-    document.getElementById('search-results')
-      .innerHTML =
-      '<div class="empty">Type to search…</div>';
-
+    document.getElementById('search-results').innerHTML =
+      '<div class="empty">Type to search</div>';
     return;
   }
 
   searchTimer = setTimeout(() => {
-
-    fetchSuggestions(q);
-
     doSearch(q);
-
-  }, 400);
+  }, 300);
 
   navigate('search');
 });
 
-function hideSuggestions() {
+async function doSearch(q) {
 
-  document.getElementById('suggestions-box')
-    .classList.remove('show');
-}
+  const container = document.getElementById('search-results');
 
-async function fetchSuggestions(q) {
+  container.innerHTML = '<div class="spinner"></div>';
 
   try {
 
-    const data =
-      await fetch(
-        `${API}/search/suggestions?q=${encodeURIComponent(q)}`
-      ).then(r => r.json());
+    const results = await fetch(
+      `${API}/search?q=${encodeURIComponent(q)}`
+    ).then(r => r.json());
 
-    const box =
-      document.getElementById('suggestions-box');
-
-    if (!data || data.length === 0) {
-
-      box.classList.remove('show');
-
+    if (!results?.length) {
+      container.innerHTML = '<div class="empty">No results</div>';
       return;
     }
 
-    box.innerHTML =
-      data.slice(0,6).map(s => `
-        <div
-          class="suggestion-item"
-          onclick="applySuggestion('${s.replace(/'/g,"\\'")}')"
-        >
-          ${s}
+    const songs = results.filter(
+      r => r.type === 'song' || r.type === 'video'
+    );
+
+    container.innerHTML = results.map((item, i) => {
+
+      const data = JSON.stringify(item).replace(/"/g, '&quot;');
+
+      return `
+        <div class="result-item"
+             data-item="${data}"
+             data-idx="${i}">
+
+          <img class="result-thumb"
+               src="${item.thumbnail || ''}"
+               loading="lazy">
+
+          <div class="result-info">
+            <div class="result-name">${item.title}</div>
+            <div class="result-sub">${item.subtitle || ''}</div>
+          </div>
+
+          <div class="result-type-badge">
+            ${typeLabel(item)}
+          </div>
         </div>
-      `).join('');
+      `;
 
-    box.classList.add('show');
+    }).join('');
 
-  } catch(e) {}
+    container.querySelectorAll('.result-item').forEach(el => {
+
+      el.addEventListener('click', () => {
+
+        const item = JSON.parse(el.dataset.item);
+
+        if (item.type === 'song' || item.type === 'video') {
+
+          const idx = songs.findIndex(
+            s => s.videoId === item.videoId
+          );
+
+          playSong(item.videoId, songs, idx);
+
+        } else {
+          handleCardClick(item);
+        }
+
+      });
+
+    });
+
+  } catch (e) {
+
+    container.innerHTML =
+      `<div class="empty">${e.message}</div>`;
+
+  }
 }
 
-function applySuggestion(s) {
+// =========================
+// PLAY SONG
+// =========================
 
-  document.getElementById('search-input')
-    .value = s;
+async function playSong(videoId, queue = [], idx = 0) {
 
-  hideSuggestions();
+  if (!videoId || !playerReady) return;
 
-  doSearch(s);
+  currentQueue = queue;
+  currentIndex = idx;
+
+  const song = currentQueue[currentIndex];
+
+  if (!song) return;
+
+  // Update player UI
+
+  document.getElementById('player-title').textContent =
+    song.title || 'Unknown';
+
+  document.getElementById('player-artist').textContent =
+    song.artists?.map(a => a.name).join(', ') ||
+    song.subtitle ||
+    '';
+
+  if (song.thumbnail) {
+    document.getElementById('player-thumb').src =
+      song.thumbnail;
+  }
+
+  // PLAY VIA YOUTUBE IFRAME
+
+  ytPlayer.loadVideoById(videoId);
+
+  updateQueuePage();
+  updateRightQueue();
+  updateTrackHighlight(videoId);
+
+  toast('Playing');
 }
 
-async function doSearch(q) {
+// =========================
+// NEXT / PREV
+// =========================
+
+function playNext() {
+
+  if (currentIndex < currentQueue.length - 1) {
+
+    currentIndex++;
+
+    const nextSong = currentQueue[currentIndex];
+
+    playSong(
+      nextSong.videoId,
+      currentQueue,
+      currentIndex
+    );
+  }
+}
+
+function playPrev() {
+
+  if (currentIndex > 0) {
+
+    currentIndex--;
+
+    const prevSong = currentQueue[currentIndex];
+
+    playSong(
+      prevSong.videoId,
+      currentQueue,
+      currentIndex
+    );
+  }
+}
+
+// =========================
+// TRACK HIGHLIGHT
+// =========================
+
+function updateTrackHighlight(videoId) {
+
+  document.querySelectorAll('.track-item').forEach(el => {
+
+    el.classList.toggle(
+      'active',
+      el.dataset.vid === videoId
+    );
+
+  });
+}
+
+// =========================
+// QUEUE PAGE
+// =========================
+
+function updateQueuePage() {
+
+  const container = document.getElementById('queue-list');
+
+  if (!currentQueue.length) {
+
+    container.innerHTML =
+      '<div class="empty">Queue empty</div>';
+
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="track-list">
+
+      ${currentQueue.map((song, i) => {
+
+        return `
+          <div class="track-item ${i === currentIndex ? 'active' : ''}"
+               data-idx="${i}">
+
+            <div class="track-num">
+              ${i + 1}
+            </div>
+
+            <img class="track-thumb"
+                 src="${song.thumbnail || ''}"
+                 loading="lazy">
+
+            <div class="track-info">
+              <div class="track-name">
+                ${song.title || ''}
+              </div>
+
+              <div class="track-artist">
+                ${
+                  song.artists?.map(a => a.name).join(', ') ||
+                  song.subtitle ||
+                  ''
+                }
+              </div>
+            </div>
+
+          </div>
+        `;
+
+      }).join('')}
+
+    </div>
+  `;
+
+  container.querySelectorAll('.track-item').forEach(el => {
+
+    el.addEventListener('click', () => {
+
+      const idx = parseInt(el.dataset.idx);
+
+      const song = currentQueue[idx];
+
+      playSong(song.videoId, currentQueue, idx);
+
+    });
+
+  });
+}
+
+// =========================
+// RIGHT SIDE QUEUE
+// =========================
+
+function updateRightQueue() {
+
+  const container = document.getElementById('right-queue');
+
+  if (!container) return;
+
+  if (!currentQueue.length) {
+
+    container.innerHTML =
+      '<div class="empty">No songs queued</div>';
+
+    return;
+  }
+
+  container.innerHTML = currentQueue.map((song, i) => {
+
+    return `
+      <div class="right-queue-item ${i === currentIndex ? 'active' : ''}"
+           data-idx="${i}">
+
+        <img src="${song.thumbnail || ''}"
+             class="right-queue-thumb">
+
+        <div class="right-queue-info">
+
+          <div class="right-queue-title">
+            ${song.title || ''}
+          </div>
+
+          <div class="right-queue-sub">
+            ${
+              song.artists?.map(a => a.name).join(', ') ||
+              song.subtitle ||
+              ''
+            }
+          </div>
+
+        </div>
+
+      </div>
+    `;
+
+  }).join('');
+
+  container.querySelectorAll('.right-queue-item').forEach(el => {
+
+    el.addEventListener('click', () => {
+
+      const idx = parseInt(el.dataset.idx);
+
+      const song = currentQueue[idx];
+
+      playSong(song.videoId, currentQueue, idx);
+
+    });
+
+  });
+}
+
+// =========================
+// CONTROLS
+// =========================
+
+document.getElementById('btn-play').addEventListener('click', () => {
+
+  if (!ytPlayer) return;
+
+  const state = ytPlayer.getPlayerState();
+
+  if (state === YT.PlayerState.PLAYING) {
+    ytPlayer.pauseVideo();
+  } else {
+    ytPlayer.playVideo();
+  }
+
+});
+
+document.getElementById('btn-next').addEventListener('click', playNext);
+
+document.getElementById('btn-prev').addEventListener('click', playPrev);
+
+// =========================
+// PROGRESS BAR
+// =========================
+
+setInterval(() => {
+
+  if (!ytPlayer || !playerReady) return;
+
+  const duration = ytPlayer.getDuration();
+  const current = ytPlayer.getCurrentTime();
+
+  if (!duration) return;
+
+  const pct = (current / duration) * 100;
+
+  document.getElementById('progress-fill').style.width =
+    pct + '%';
+
+  document.getElementById('time-cur').textContent =
+    fmtTime(current);
+
+  document.getElementById('time-total').textContent =
+    fmtTime(duration);
+
+}, 500);
+
+document.getElementById('progress-bar').addEventListener('click', function (e) {
+
+  if (!ytPlayer) return;
+
+  const rect = this.getBoundingClientRect();
+
+  const pct =
+    (e.clientX - rect.left) / rect.width;
+
+  const duration = ytPlayer.getDuration();
+
+  ytPlayer.seekTo(duration * pct, true);
+
+});
+
+// =========================
+// ALBUM
+// =========================
+
+async function loadAlbum(browseId) {
+
+  showDetail();
+
+  const container = document.getElementById('detail-content');
+
+  container.innerHTML = '<div class="spinner"></div>';
+
+  try {
+
+    const data = await fetch(
+      `${API}/album?id=${browseId}`
+    ).then(r => r.json());
+
+    const tracks = data.tracks || [];
+
+    container.innerHTML = `
+      <div class="detail-header">
+
+        <img class="detail-art"
+             src="${data.thumbnail || ''}">
+
+        <div class="detail-meta">
+
+          <div class="detail-title">
+            ${data.title || 'Album'}
+          </div>
+
+          <button class="btn btn-primary"
+                  id="album-play-btn">
+            ▶ Play All
+          </button>
+
+        </div>
+
+      </div>
+
+      <div class="track-list">
+
+        ${tracks.map((t, i) => {
+
+          return `
+            <div class="track-item"
+                 data-idx="${i}"
+                 data-vid="${t.videoId}">
+
+              <div class="track-num">
+                ${i + 1}
+              </div>
+
+              <img class="track-thumb"
+                   src="${t.thumbnail || ''}">
+
+              <div class="track-info">
+
+                <div class="track-name">
+                  ${t.title || ''}
+                </div>
+
+                <div class="track-artist">
+                  ${
+                    t.artists?.map(a => a.name).join(', ') ||
+                    ''
+                  }
+                </div>
+
+              </div>
+
+            </div>
+          `;
+
+        }).join('')}
+
+      </div>
+    `;
+
+    container.querySelectorAll('.track-item').forEach(el => {
+
+      el.addEventListener('click', () => {
+
+        const idx = parseInt(el.dataset.idx);
+
+        const song = tracks[idx];
+
+        playSong(song.videoId, tracks, idx);
+
+      });
+
+    });
+
+    document.getElementById('album-play-btn')
+      .addEventListener('click', () => {
+
+        if (tracks.length) {
+          playSong(tracks[0].videoId, tracks, 0);
+        }
+
+      });
+
+  } catch (e) {
+
+    container.innerHTML =
+      `<div class="empty">${e.message}</div>`;
+
+  }
+}
+
+// =========================
+// PLAYLIST
+// =========================
+
+async function loadPlaylist(playlistId) {
+
+  showDetail();
+
+  const container = document.getElementById('detail-content');
+
+  container.innerHTML = '<div class="spinner"></div>';
+
+  try {
+
+    const data = await fetch(
+      `${API}/playlist?id=${playlistId}`
+    ).then(r => r.json());
+
+    const tracks = data.tracks || [];
+
+    container.innerHTML = `
+      <div class="detail-header">
+
+        <img class="detail-art"
+             src="${data.thumbnail || ''}">
+
+        <div class="detail-meta">
+
+          <div class="detail-title">
+            ${data.title || 'Playlist'}
+          </div>
+
+          <button class="btn btn-primary"
+                  id="playlist-play-btn">
+            ▶ Play All
+          </button>
+
+        </div>
+
+      </div>
+
+      <div class="track-list">
+
+        ${tracks.map((t, i) => {
+
+          return `
+            <div class="track-item"
+                 data-idx="${i}"
+                 data-vid="${t.videoId}">
+
+              <div class="track-num">
+                ${i + 1}
+              </div>
+
+              <img class="track-thumb"
+                   src="${t.thumbnail || ''}">
+
+              <div class="track-info">
+
+                <div class="track-name">
+                  ${t.title || ''}
+                </div>
+
+                <div class="track-artist">
+                  ${
+                    t.artists?.map(a => a.name).join(', ') ||
+                    ''
+                  }
+                </div>
+
+              </div>
+
+            </div>
+          `;
+
+        }).join('')}
+
+      </div>
+    `;
+
+    container.querySelectorAll('.track-item').forEach(el => {
+
+      el.addEventListener('click', () => {
+
+        const idx = parseInt(el.dataset.idx);
+
+        const song = tracks[idx];
+
+        playSong(song.videoId, tracks, idx);
+
+      });
+
+    });
+
+    document.getElementById('playlist-play-btn')
+      .addEventListener('click', () => {
+
+        if (tracks.length) {
+          playSong(tracks[0].videoId, tracks, 0);
+        }
+
+      });
+
+  } catch (e) {
+
+    container.innerHTML =
+      `<div class="empty">${e.message}</div>`;
+
+  }
+}
+
+// =========================
+// ARTIST
+// =========================
+
+async function loadArtist(browseId) {
+
+  showDetail();
 
   const container =
-    document.getElementById('search-results');
+    document.getElementById('detail-content');
 
   container.innerHTML =
     '<div class="spinner"></div>';
 
   try {
 
-    const results =
-      await fetch(
-        `${API}/search?q=${encodeURIComponent(q)}`
-      ).then(r => r.json());
-
-    if (!results || results.length === 0) {
-
-      container.innerHTML =
-        '<div class="empty">No results found.</div>';
-
-      return;
-    }
-
-    const songs =
-      results.filter(r =>
-        r.type === 'song' ||
-        r.type === 'video'
-      );
-
-    container.innerHTML =
-      results.map((item, i) => {
-
-        const thumb =
-          item.thumbnail || '';
-
-        const data =
-          JSON.stringify(item)
-            .replace(/"/g, '&quot;');
-
-        return `
-          <div
-            class="result-item"
-            data-action="open"
-            data-item="${data}"
-            data-idx="${i}"
-          >
-
-            ${
-              thumb
-                ? `<img class="result-thumb" src="${thumb}" loading="lazy">`
-                : `<div class="result-thumb">♪</div>`
-            }
-
-            <div class="result-info">
-
-              <div class="result-name">
-                ${item.title || 'Unknown'}
-              </div>
-
-              <div class="result-sub">
-                ${
-                  item.subtitle ||
-                  item.artists?.map(a => a.name).join(', ') ||
-                  ''
-                }
-              </div>
-
-            </div>
-
-            <div class="result-type-badge">
-              ${typeLabel(item)}
-            </div>
-
-          </div>
-        `;
-      }).join('');
-
-    container.querySelectorAll('[data-action]')
-      .forEach(el => {
-
-        el.addEventListener('click', () => {
-
-          const item =
-            JSON.parse(el.dataset.item);
-
-          if (
-            item.type === 'song' ||
-            item.type === 'video'
-          ) {
-
-            playSong(
-              item.videoId,
-              songs,
-              songs.findIndex(
-                s => s.videoId === item.videoId
-              )
-            );
-
-          } else {
-
-            handleCardClick(item);
-          }
-        });
-      });
-
-  } catch(e) {
+    const data = await fetch(
+      `${API}/artist?id=${browseId}`
+    ).then(r => r.json());
 
     container.innerHTML = `
-      <div class="empty">
-        Search failed.
-        ${e.message}
+      <div class="detail-header">
+
+        <img class="detail-art"
+             src="${data.thumbnail || ''}"
+             style="border-radius:50%">
+
+        <div class="detail-meta">
+
+          <div class="detail-title">
+            ${data.name || 'Artist'}
+          </div>
+
+        </div>
+
       </div>
     `;
-  }
-}
 
-// ===============================
-// PLAY SONG
-// ===============================
-
-async function playSong(videoId, queue = [], idx = 0) {
-
-  if (!videoId || !playerReady)
-    return;
-
-  currentQueue = queue || [];
-
-  currentIndex = idx >= 0 ? idx : 0;
-
-  const qItem =
-    currentQueue[currentIndex];
-
-  if (qItem) {
-
-    document.getElementById('player-title')
-      .textContent =
-      qItem.title || '...';
-
-    document.getElementById('player-artist')
-      .textContent =
-      qItem.artists?.map(a => a.name).join(', ')
-      || qItem.subtitle
-      || '...';
-
-    if (qItem.thumbnail) {
-
-      document.getElementById('player-thumb')
-        .src = qItem.thumbnail;
-    }
-  }
-
-  player.loadVideoById(videoId);
-
-  updateQueuePage();
-
-  updateTrackHighlight(videoId);
-
-  toast('Playing');
-}
-
-// ===============================
-// TRACK HIGHLIGHT
-// ===============================
-
-function updateTrackHighlight(videoId) {
-
-  document.querySelectorAll('.track-item')
-    .forEach(el => {
-
-      el.classList.toggle(
-        'active',
-        el.dataset.vid === videoId
-      );
-    });
-}
-
-// ===============================
-// QUEUE PAGE
-// ===============================
-
-function updateQueuePage() {
-
-  const container =
-    document.getElementById('queue-list');
-
-  if (!currentQueue.length) {
+  } catch (e) {
 
     container.innerHTML =
-      '<div class="empty">Nothing queued.</div>';
+      `<div class="empty">${e.message}</div>`;
 
-    return;
-  }
-
-  container.innerHTML =
-    `<div class="track-list">` +
-
-    currentQueue.map((t, i) => `
-
-      <div
-        class="track-item ${i === currentIndex ? 'active' : ''}"
-        data-vid="${t.videoId || ''}"
-        data-idx="${i}"
-      >
-
-        <div class="track-num">
-          ${i + 1}
-        </div>
-
-        ${
-          t.thumbnail
-            ? `<img class="track-thumb" src="${t.thumbnail}" loading="lazy">`
-            : `<div class="track-thumb">♪</div>`
-        }
-
-        <div class="track-info">
-
-          <div class="track-name">
-            ${t.title || '—'}
-          </div>
-
-          <div class="track-artist">
-            ${
-              t.artists?.map(a => a.name).join(', ')
-              || t.subtitle
-              || ''
-            }
-          </div>
-
-        </div>
-
-        <div class="track-dur">
-          ${t.duration || ''}
-        </div>
-
-      </div>
-
-    `).join('')
-
-    + `</div>`;
-
-  container.querySelectorAll('.track-item')
-    .forEach(el => {
-
-      el.addEventListener('click', () => {
-
-        const i =
-          parseInt(el.dataset.idx);
-
-        if (currentQueue[i]?.videoId) {
-
-          playSong(
-            currentQueue[i].videoId,
-            currentQueue,
-            i
-          );
-        }
-      });
-    });
-}
-
-// ===============================
-// NEXT SONG
-// ===============================
-
-function playNextSong() {
-
-  if (currentIndex < currentQueue.length - 1) {
-
-    currentIndex++;
-
-    playSong(
-      currentQueue[currentIndex].videoId,
-      currentQueue,
-      currentIndex
-    );
   }
 }
 
-// ===============================
-// PREVIOUS SONG
-// ===============================
-
-function playPrevSong() {
-
-  if (!playerReady) return;
-
-  if (player.getCurrentTime() > 3) {
-
-    player.seekTo(0, true);
-
-    return;
-  }
-
-  if (currentIndex > 0) {
-
-    currentIndex--;
-
-    playSong(
-      currentQueue[currentIndex].videoId,
-      currentQueue,
-      currentIndex
-    );
-  }
-}
-
-// ===============================
-// CONTROLS
-// ===============================
-
-document
-.getElementById('btn-play')
-.addEventListener('click', () => {
-
-  if (!playerReady) return;
-
-  const state =
-    player.getPlayerState();
-
-  if (state === YT.PlayerState.PLAYING) {
-
-    player.pauseVideo();
-
-  } else {
-
-    player.playVideo();
-  }
-});
-
-document
-.getElementById('btn-next')
-.addEventListener('click', playNextSong);
-
-document
-.getElementById('btn-prev')
-.addEventListener('click', playPrevSong);
-
-// ===============================
-// PROGRESS BAR
-// ===============================
-
-document
-.getElementById('progress-bar')
-.addEventListener('click', function(e) {
-
-  if (!playerReady) return;
-
-  const duration =
-    player.getDuration();
-
-  if (!duration) return;
-
-  const rect =
-    this.getBoundingClientRect();
-
-  const percent =
-    (e.clientX - rect.left) / rect.width;
-
-  player.seekTo(duration * percent, true);
-});
-
-// ===============================
-// VOLUME
-// ===============================
-
-document
-.getElementById('volume-slider')
-.addEventListener('input', function() {
-
-  if (!playerReady) return;
-
-  player.setVolume(
-    parseFloat(this.value) * 100
-  );
-});
-
-// ===============================
-// PROGRESS LOOP
-// ===============================
-
-let progressInterval = null;
-
-function startProgressUpdater() {
-
-  clearInterval(progressInterval);
-
-  progressInterval = setInterval(() => {
-
-    if (!playerReady) return;
-
-    const state =
-      player.getPlayerState();
-
-    if (state !== YT.PlayerState.PLAYING)
-      return;
-
-    const current =
-      player.getCurrentTime();
-
-    const duration =
-      player.getDuration();
-
-    const pct =
-      duration
-        ? (current / duration) * 100
-        : 0;
-
-    document.getElementById('progress-fill')
-      .style.width = pct + '%';
-
-    document.getElementById('time-cur')
-      .textContent = fmtTime(current);
-
-    document.getElementById('time-total')
-      .textContent = fmtTime(duration);
-
-  }, 500);
-}
-
-// ===============================
+// =========================
 // INIT
-// ===============================
+// =========================
 
 loadHome().then(() => {
-
   handleRoute();
 });
 </script>
