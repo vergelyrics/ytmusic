@@ -680,78 +680,6 @@ body {
 <audio id="audio-el"></audio>
 
 <script>
-// ---- ROUTER ----
-
-function goTo(path) {
-  history.pushState({}, '', path);
-  handleRoute();
-}
-
-window.addEventListener('popstate', handleRoute);
-
-function handleRoute() {
-  const path = location.pathname;
-
-  // HOME
-  if (path === '/') {
-    activatePage('home');
-    return;
-  }
-
-  // SEARCH
-  if (path === '/search') {
-    activatePage('search');
-    return;
-  }
-
-  // QUEUE
-  if (path === '/queue') {
-    activatePage('queue');
-    return;
-  }
-
-  // ALBUM
-  if (path.startsWith('/album/')) {
-    const id = path.split('/album/')[1];
-    loadAlbum(id);
-    return;
-  }
-
-  // ARTIST
-  if (path.startsWith('/artist/')) {
-    const id = path.split('/artist/')[1];
-    loadArtist(id);
-    return;
-  }
-
-  // PLAYLIST
-  if (path.startsWith('/playlist/')) {
-    const id = path.split('/playlist/')[1];
-    loadPlaylist(id);
-    return;
-  }
-
-  activatePage('home');
-}
-
-function activatePage(page) {
-  document.querySelectorAll('.page').forEach(p => {
-    p.classList.remove('active');
-  });
-
-  document.querySelectorAll('.nav-container a').forEach(a => {
-    a.classList.remove('active');
-  });
-
-  const pageEl = document.getElementById('page-' + page);
-  if (pageEl) pageEl.classList.add('active');
-
-  const navEl = document.querySelector(`[data-page="${page}"]`);
-  if (navEl) navEl.classList.add('active');
-
-  window.scrollTo(0, 0);
-}
-
 const API = 'https://yt-music-api.vergelyrics.workers.dev';
 
 // ---- State ----
@@ -761,371 +689,485 @@ let searchTimer = null;
 let audioEl = document.getElementById('audio-el');
 
 // ---- Navigation ----
-function navigate(page) {
-  const routes = {
-    home: '/',
-    search: '/search',
-    queue: '/queue'
-  };
+function navigate(page, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-container a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if (el) el.classList.add('active');
+}
 
-  goTo(routes[page] || '/');
+function showDetail() {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-container a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-detail').classList.add('active');
 }
 
 // ---- Helpers ----
 function img(url, cls='', alt='') {
-  if (!url) {
-    return `<div class="${cls} card-art-placeholder">♪</div>`;
-  }
-
-  return `
-    <img 
-      class="${cls}" 
-      src="${url}" 
-      alt="${alt}" 
-      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" 
-      loading="lazy"
-    >
-    <div class="${cls} card-art-placeholder" style="display:none">♪</div>
-  `;
+  if (!url) return `<div class="${cls} card-art-placeholder">♪</div>`;
+  return `<img class="${cls}" src="${url}" alt="${alt}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" loading="lazy"><div class="${cls} card-art-placeholder" style="display:none">♪</div>`;
 }
 
 function fmtTime(s) {
   s = Math.floor(s || 0);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-
-  return `${m}:${sec.toString().padStart(2, '0')}`;
+  const m = Math.floor(s/60), sec = s%60;
+  return `${m}:${sec.toString().padStart(2,'0')}`;
 }
 
 function toast(msg) {
   const t = document.getElementById('toast');
-
   t.textContent = msg;
   t.classList.add('show');
-
-  setTimeout(() => {
-    t.classList.remove('show');
-  }, 2500);
+  setTimeout(() => t.classList.remove('show'), 2500);
 }
 
 function typeLabel(item) {
   if (!item) return '';
-
-  const map = {
-    song: 'Song',
-    video: 'Video',
-    artist: 'Artist',
-    album: 'Album',
-    ep: 'EP',
-    single: 'Single',
-    playlist: 'Playlist'
-  };
-
+  const map = { song:'Song', video:'Video', artist:'Artist', album:'Album', ep:'EP', single:'Single', playlist:'Playlist' };
   return map[item.type] || item.type || '';
 }
 
 // ---- Home ----
 async function loadHome() {
   const container = document.getElementById('home-content');
-
   try {
-    const sections = await fetch(`${API}/home`)
-      .then(r => r.json());
-
+    const sections = await fetch(`${API}/home`).then(r=>r.json());
     if (!Array.isArray(sections) || sections.length === 0) {
-      container.innerHTML = `
-        <div class="empty">
-          Nothing to show.
-        </div>
-      `;
+      container.innerHTML = '<div class="empty">Nothing to show.</div>';
       return;
     }
-
-    container.innerHTML = sections.map(section => {
-      if (!section?.items?.length) return '';
-
+    container.innerHTML = sections.map(s => {
+      if (!s || !s.items || s.items.length === 0) return '';
       return `
         <div class="section">
           <div class="section-header">
-            <div class="section-title">
-              ${section.title || 'Picks'}
-            </div>
+            <div class="section-title">${s.title || 'Picks'}</div>
           </div>
-
           <div class="card-grid">
-            ${section.items
-              .slice(0, 10)
-              .map(item => cardHTML(item))
-              .join('')}
+            ${s.items.slice(0,10).map(item => cardHTML(item)).join('')}
           </div>
-        </div>
-      `;
+        </div>`;
     }).join('');
-
-    container.querySelectorAll('[data-action]')
-      .forEach(el => {
-        el.addEventListener('click', () => {
-          handleCardClick(JSON.parse(el.dataset.item));
-        });
-      });
-
-  } catch (e) {
-    container.innerHTML = `
-      <div class="empty">
-        Couldn't load home. ${e.message}
-      </div>
-    `;
+    // Attach click events
+    container.querySelectorAll('[data-action]').forEach(el => {
+      el.addEventListener('click', () => handleCardClick(JSON.parse(el.dataset.item)));
+    });
+  } catch(e) {
+    container.innerHTML = `<div class="empty">Couldn't load home. ${e.message}</div>`;
   }
 }
 
 function cardHTML(item) {
   if (!item) return '';
-
   const thumb = item.thumbnail || '';
   const title = item.title || 'Unknown';
   const sub = item.subtitle || typeLabel(item);
-
-  const data = JSON.stringify(item)
-    .replace(/"/g, '&quot;');
-
+  const data = JSON.stringify(item).replace(/"/g, '&quot;');
   return `
-    <div 
-      class="card"
-      data-action="open"
-      data-item="${data}"
-    >
-      ${
-        thumb
-          ? `<img class="card-art" src="${thumb}" alt="" loading="lazy">`
-          : `<div class="card-art-placeholder">♪</div>`
-      }
-
+    <div class="card" data-action="open" data-item="${data}">
+      ${thumb ? `<img class="card-art" src="${thumb}" alt="" onerror="this.style.display='none'" loading="lazy">` : `<div class="card-art-placeholder">♪</div>`}
       <div class="card-play-btn">
-        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-          <polygon points="5,3 19,12 5,21"/>
-        </svg>
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
       </div>
-
       <div class="card-info">
         <div class="card-name">${title}</div>
         <div class="card-sub">${sub}</div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-// ---- Card Clicks ----
+// ---- Card / Item Clicks ----
 function handleCardClick(item) {
   if (!item) return;
-
-  // SONG
   if (item.type === 'song' || item.type === 'video') {
     playSong(item.videoId, [item], 0);
-  }
-
-  // ALBUM
-  else if (
-    item.type === 'album' ||
-    item.type === 'ep' ||
-    item.type === 'single'
-  ) {
-    goTo(`/album/${item.browseId}`);
-  }
-
-  // ARTIST
-  else if (item.type === 'artist') {
-    goTo(`/artist/${item.browseId}`);
-  }
-
-  // PLAYLIST
-  else if (item.type === 'playlist') {
-    goTo(`/playlist/${item.playlistId}`);
+  } else if (item.type === 'album' || item.type === 'ep' || item.type === 'single') {
+    loadAlbum(item.browseId);
+  } else if (item.type === 'artist') {
+    loadArtist(item.browseId);
+  } else if (item.type === 'playlist') {
+    loadPlaylist(item.playlistId);
   }
 }
 
 // ---- Search ----
-document.getElementById('search-input')
-  .addEventListener('input', function () {
-
-    const q = this.value.trim();
-
-    clearTimeout(searchTimer);
-
-    if (!q) {
-      hideSuggestions();
-
-      document.getElementById('search-results').innerHTML = `
-        <div class="empty">
-          Type to search…
-        </div>
-      `;
-
-      return;
-    }
-
-    searchTimer = setTimeout(() => {
-      fetchSuggestions(q);
-      doSearch(q);
-    }, 400);
-
-    goTo('/search');
-  });
-
-document.getElementById('search-input')
-  .addEventListener('focus', function () {
-    if (this.value.trim()) {
-      fetchSuggestions(this.value.trim());
-    }
-  });
-
-document.addEventListener('click', function (e) {
-  if (!document.getElementById('search-wrap').contains(e.target)) {
+document.getElementById('search-input').addEventListener('input', function() {
+  const q = this.value.trim();
+  clearTimeout(searchTimer);
+  if (!q) {
     hideSuggestions();
+    document.getElementById('search-results').innerHTML = '<div class="empty">Type to search…</div>';
+    return;
   }
+  searchTimer = setTimeout(() => {
+    fetchSuggestions(q);
+    doSearch(q);
+  }, 400);
+  navigate('search', document.querySelector('[data-page="search"]'));
+});
+
+document.getElementById('search-input').addEventListener('focus', function() {
+  if (this.value.trim()) fetchSuggestions(this.value.trim());
+});
+
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('search-wrap').contains(e.target)) hideSuggestions();
 });
 
 function hideSuggestions() {
-  document.getElementById('suggestions-box')
-    .classList.remove('show');
+  document.getElementById('suggestions-box').classList.remove('show');
 }
 
 async function fetchSuggestions(q) {
   try {
-    const data = await fetch(
-      `${API}/search/suggestions?q=${encodeURIComponent(q)}`
-    ).then(r => r.json());
-
+    const data = await fetch(`${API}/search/suggestions?q=${encodeURIComponent(q)}`).then(r=>r.json());
     const box = document.getElementById('suggestions-box');
-
-    if (!data || data.length === 0) {
-      box.classList.remove('show');
-      return;
-    }
-
-    box.innerHTML = data.slice(0, 6).map(s => `
-      <div 
-        class="suggestion-item"
-        onclick="applySuggestion('${s.replace(/'/g, "\\'")}')"
-      >
+    if (!data || data.length === 0) { box.classList.remove('show'); return; }
+    box.innerHTML = data.slice(0,6).map(s =>
+      `<div class="suggestion-item" onclick="applySuggestion('${s.replace(/'/g,"\\'")}')">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         ${s}
-      </div>
-    `).join('');
-
+      </div>`
+    ).join('');
     box.classList.add('show');
-
-  } catch (e) {}
+  } catch(e) {}
 }
 
 function applySuggestion(s) {
   document.getElementById('search-input').value = s;
-
   hideSuggestions();
-
   doSearch(s);
-
-  goTo('/search');
 }
 
-// ---- SEARCH RESULTS ----
 async function doSearch(q) {
   const container = document.getElementById('search-results');
-
   container.innerHTML = '<div class="spinner"></div>';
-
   try {
-    const results = await fetch(
-      `${API}/search?q=${encodeURIComponent(q)}`
-    ).then(r => r.json());
-
+    const results = await fetch(`${API}/search?q=${encodeURIComponent(q)}`).then(r=>r.json());
     if (!results || results.length === 0) {
-      container.innerHTML = `
-        <div class="empty">
-          No results found.
-        </div>
-      `;
+      container.innerHTML = '<div class="empty">No results found.</div>';
       return;
     }
-
-    const songs = results.filter(r =>
-      r.type === 'song' || r.type === 'video'
-    );
-
-    container.innerHTML = results.map(item => {
-
+    // Collect songs for queue
+    const songs = results.filter(r => r.type === 'song' || r.type === 'video');
+    container.innerHTML = results.map((item, i) => {
       const thumb = item.thumbnail || '';
-      const isCircle = item.type === 'artist'
-        ? 'circle'
-        : '';
-
-      const data = JSON.stringify(item)
-        .replace(/"/g, '&quot;');
-
-      return `
-        <div 
-          class="result-item"
-          data-action="open"
-          data-item="${data}"
-        >
-          ${
-            thumb
-              ? `<img class="result-thumb ${isCircle}" src="${thumb}" loading="lazy">`
-              : `<div class="result-thumb ${isCircle}">♪</div>`
-          }
-
-          <div class="result-info">
-            <div class="result-name">
-              ${item.title || 'Unknown'}
-            </div>
-
-            <div class="result-sub">
-              ${item.subtitle || ''}
-            </div>
-          </div>
-
-          <div class="result-type-badge">
-            ${typeLabel(item)}
-          </div>
+      const isCircle = item.type === 'artist' ? 'circle' : '';
+      const data = JSON.stringify(item).replace(/"/g, '&quot;');
+      return `<div class="result-item" data-action="open" data-item="${data}" data-idx="${i}">
+        ${thumb ? `<img class="result-thumb ${isCircle}" src="${thumb}" alt="" onerror="this.style.display='none'" loading="lazy">` : `<div class="result-thumb ${isCircle}" style="display:flex;align-items:center;justify-content:center;color:var(--muted)">♪</div>`}
+        <div class="result-info">
+          <div class="result-name">${item.title || 'Unknown'}</div>
+          <div class="result-sub">${item.subtitle || item.artists?.map(a=>a.name).join(', ') || ''}</div>
         </div>
-      `;
+        <div class="result-type-badge">${typeLabel(item)}</div>
+      </div>`;
     }).join('');
-
-    container.querySelectorAll('[data-action]')
-      .forEach(el => {
-
-        el.addEventListener('click', () => {
-
-          const item = JSON.parse(el.dataset.item);
-
-          if (
-            item.type === 'song' ||
-            item.type === 'video'
-          ) {
-            playSong(
-              item.videoId,
-              songs,
-              songs.findIndex(s => s.videoId === item.videoId)
-            );
-          }
-
-          else {
-            handleCardClick(item);
-          }
-        });
+    container.querySelectorAll('[data-action]').forEach(el => {
+      el.addEventListener('click', () => {
+        const item = JSON.parse(el.dataset.item);
+        if (item.type === 'song' || item.type === 'video') {
+          playSong(item.videoId, songs, songs.findIndex(s => s.videoId === item.videoId));
+        } else {
+          handleCardClick(item);
+        }
       });
-
-  } catch (e) {
-    container.innerHTML = `
-      <div class="empty">
-        Search failed. ${e.message}
-      </div>
-    `;
+    });
+  } catch(e) {
+    container.innerHTML = `<div class="empty">Search failed. ${e.message}</div>`;
   }
 }
 
-// ---- INIT ----
-loadHome().then(() => {
-  handleRoute();
+// ---- Album ----
+async function loadAlbum(browseId) {
+  showDetail();
+  const container = document.getElementById('detail-content');
+  container.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await fetch(`${API}/album?id=${browseId}`).then(r=>r.json());
+    const thumb = data.thumbnail || '';
+    const tracks = data.tracks || [];
+    container.innerHTML = `
+      <div class="detail-header">
+        ${thumb ? `<img class="detail-art" src="${thumb}" alt="">` : `<div class="detail-art" style="display:flex;align-items:center;justify-content:center;font-size:48px;color:var(--muted)">♪</div>`}
+        <div class="detail-meta">
+          <div class="detail-type">Album</div>
+          <div class="detail-title">${data.title || 'Album'}</div>
+          <div class="detail-subtitle">${data.subtitle || ''} ${data.description ? '· ' + data.description.slice(0,80) : ''}</div>
+          <div class="detail-actions">
+            <button class="btn btn-primary" id="album-play-btn">▶ Play All</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:0 28px">
+        <div class="track-list" id="album-tracks">
+          ${tracks.map((t,i) => `
+            <div class="track-item" data-idx="${i}">
+              <div class="track-num">${i+1}</div>
+              ${t.thumbnail ? `<img class="track-thumb" src="${t.thumbnail}" alt="" onerror="this.src=''" loading="lazy">` : `<div class="track-thumb" style="display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted)">♪</div>`}
+              <div class="track-info">
+                <div class="track-name">${t.title || '—'}</div>
+                <div class="track-artist">${t.artists?.map(a=>a.name).join(', ') || t.subtitle || ''}</div>
+              </div>
+              <div class="track-dur">${t.duration || ''}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+
+    const validTracks = tracks.filter(t => t.videoId);
+    container.querySelectorAll('#album-tracks .track-item').forEach((el, i) => {
+      el.addEventListener('click', () => {
+        const realIdx = validTracks.findIndex(t => t.videoId === tracks[i]?.videoId);
+        if (tracks[i]?.videoId) playSong(tracks[i].videoId, validTracks, realIdx >= 0 ? realIdx : 0);
+      });
+    });
+    document.getElementById('album-play-btn').addEventListener('click', () => {
+      if (validTracks.length) playSong(validTracks[0].videoId, validTracks, 0);
+    });
+  } catch(e) {
+    container.innerHTML = `<div class="empty">Failed to load album. ${e.message}</div>`;
+  }
+}
+
+// ---- Artist ----
+async function loadArtist(browseId) {
+  showDetail();
+  const container = document.getElementById('detail-content');
+  container.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await fetch(`${API}/artist?id=${browseId}`).then(r=>r.json());
+    const thumb = data.thumbnail || '';
+    const sections = data.sections || [];
+
+    let html = `
+      <div class="detail-header">
+        ${thumb ? `<img class="detail-art" src="${thumb}" alt="" style="border-radius:50%">` : `<div class="detail-art" style="border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:48px;color:var(--muted)">♪</div>`}
+        <div class="detail-meta">
+          <div class="detail-type">Artist</div>
+          <div class="detail-title">${data.name || 'Artist'}</div>
+          <div class="detail-subtitle">${data.description ? data.description.slice(0,120) + '…' : ''}</div>
+        </div>
+      </div>
+      <div style="padding:0 28px">`;
+
+    sections.forEach(section => {
+      if (!section || !section.items?.length) return;
+      const hasSongs = section.items[0]?.type === 'song';
+      html += `<div class="section"><div class="section-header"><div class="section-title">${section.title || ''}</div></div>`;
+      if (hasSongs) {
+        html += `<div class="track-list" data-type="songs">` +
+          section.items.slice(0,8).map((t,i) => `
+            <div class="track-item" data-vid="${t.videoId||''}">
+              <div class="track-num">${i+1}</div>
+              ${t.thumbnail ? `<img class="track-thumb" src="${t.thumbnail}" alt="" loading="lazy">` : `<div class="track-thumb" style="display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted)">♪</div>`}
+              <div class="track-info">
+                <div class="track-name">${t.title||'—'}</div>
+                <div class="track-artist">${t.artists?.map(a=>a.name).join(', ') || t.subtitle || ''}</div>
+              </div>
+            </div>`).join('') + `</div>`;
+      } else {
+        html += `<div class="card-grid">` +
+          section.items.slice(0,8).map(item => cardHTML(item)).join('') + `</div>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+    container.innerHTML = html;
+
+    // Song rows
+    container.querySelectorAll('[data-type="songs"] .track-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (el.dataset.vid) playSong(el.dataset.vid, [], 0);
+      });
+    });
+    // Cards
+    container.querySelectorAll('[data-action]').forEach(el => {
+      el.addEventListener('click', () => handleCardClick(JSON.parse(el.dataset.item)));
+    });
+  } catch(e) {
+    container.innerHTML = `<div class="empty">Failed to load artist. ${e.message}</div>`;
+  }
+}
+
+// ---- Playlist ----
+async function loadPlaylist(playlistId) {
+  showDetail();
+  const container = document.getElementById('detail-content');
+  container.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await fetch(`${API}/playlist?id=${playlistId}`).then(r=>r.json());
+    const tracks = data.tracks || [];
+    const thumb = data.thumbnail || tracks[0]?.thumbnail || '';
+    container.innerHTML = `
+      <div class="detail-header">
+        ${thumb ? `<img class="detail-art" src="${thumb}" alt="">` : `<div class="detail-art" style="display:flex;align-items:center;justify-content:center;font-size:48px;color:var(--muted)">♪</div>`}
+        <div class="detail-meta">
+          <div class="detail-type">Playlist</div>
+          <div class="detail-title">${data.title || 'Playlist'}</div>
+          <div class="detail-subtitle">${tracks.length} tracks</div>
+          <div class="detail-actions">
+            <button class="btn btn-primary" id="pl-play-btn">▶ Play All</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:0 28px">
+        <div class="track-list" id="pl-tracks">
+          ${tracks.map((t,i) => `
+            <div class="track-item" data-idx="${i}">
+              <div class="track-num">${i+1}</div>
+              ${t.thumbnail ? `<img class="track-thumb" src="${t.thumbnail}" alt="" loading="lazy">` : `<div class="track-thumb" style="display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted)">♪</div>`}
+              <div class="track-info">
+                <div class="track-name">${t.title||'—'}</div>
+                <div class="track-artist">${t.artists?.map(a=>a.name).join(', ') || t.subtitle || ''}</div>
+              </div>
+              <div class="track-dur">${t.duration||''}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+
+    const validTracks = tracks.filter(t => t.videoId);
+    container.querySelectorAll('#pl-tracks .track-item').forEach((el, i) => {
+      el.addEventListener('click', () => {
+        if (tracks[i]?.videoId) {
+          const ri = validTracks.findIndex(t => t.videoId === tracks[i].videoId);
+          playSong(tracks[i].videoId, validTracks, ri >= 0 ? ri : 0);
+        }
+      });
+    });
+    document.getElementById('pl-play-btn').addEventListener('click', () => {
+      if (validTracks.length) playSong(validTracks[0].videoId, validTracks, 0);
+    });
+  } catch(e) {
+    container.innerHTML = `<div class="empty">Failed to load playlist. ${e.message}</div>`;
+  }
+}
+
+// ---- Play Song ----
+async function playSong(videoId, queue, idx) {
+  if (!videoId) return;
+  currentQueue = queue || [];
+  currentIndex = idx >= 0 ? idx : 0;
+
+  // Update player UI optimistically from queue item
+  const qItem = currentQueue[currentIndex];
+  if (qItem) {
+    document.getElementById('player-title').textContent = qItem.title || '…';
+    document.getElementById('player-artist').textContent = qItem.artists?.map(a=>a.name).join(', ') || qItem.subtitle || '…';
+    if (qItem.thumbnail) document.getElementById('player-thumb').src = qItem.thumbnail;
+  }
+
+  toast('Loading…');
+  try {
+    const data = await fetch(`${API}/song?id=${videoId}`).then(r=>r.json());
+    const streams = data.streams || [];
+    if (streams.length === 0) { toast('No stream available.'); return; }
+
+    // Prefer best quality audio
+    const best = streams.find(s => s.mimeType?.includes('opus')) || streams[0];
+    audioEl.src = best.url;
+    audioEl.play();
+
+    // Update player
+    document.getElementById('player-title').textContent = data.title || qItem?.title || '?';
+    document.getElementById('player-artist').textContent = data.author || qItem?.artists?.map(a=>a.name).join(', ') || '?';
+    const thumbUrl = data.thumbnails?.at(-1)?.url || data.thumbnails?.[0]?.url || qItem?.thumbnail || '';
+    if (thumbUrl) document.getElementById('player-thumb').src = thumbUrl;
+
+    // Update queue
+    if (data.related?.length && currentQueue.length === 0) {
+      currentQueue = data.related;
+    }
+    updateQueuePage();
+    updateTrackHighlight(videoId);
+  } catch(e) {
+    toast('Playback error: ' + e.message);
+  }
+}
+
+function updateTrackHighlight(videoId) {
+  document.querySelectorAll('.track-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.vid === videoId);
+  });
+}
+
+// ---- Queue Page ----
+function updateQueuePage() {
+  const container = document.getElementById('queue-list');
+  if (!currentQueue.length) {
+    container.innerHTML = '<div class="empty">Nothing queued.</div>';
+    return;
+  }
+  container.innerHTML = `<div class="track-list">` +
+    currentQueue.map((t,i) => `
+      <div class="track-item ${i === currentIndex ? 'active' : ''}" data-vid="${t.videoId||''}" data-idx="${i}">
+        <div class="track-num">${i+1}</div>
+        ${t.thumbnail ? `<img class="track-thumb" src="${t.thumbnail}" alt="" loading="lazy">` : `<div class="track-thumb" style="display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted)">♪</div>`}
+        <div class="track-info">
+          <div class="track-name">${t.title||'—'}</div>
+          <div class="track-artist">${t.artists?.map(a=>a.name).join(', ') || t.subtitle || ''}</div>
+        </div>
+        <div class="track-dur">${t.duration||''}</div>
+      </div>`).join('') + `</div>`;
+  container.querySelectorAll('.track-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const i = parseInt(el.dataset.idx);
+      if (currentQueue[i]?.videoId) playSong(currentQueue[i].videoId, currentQueue, i);
+    });
+  });
+}
+
+// ---- Audio Events ----
+audioEl.addEventListener('play', () => {
+  document.getElementById('icon-play').style.display = 'none';
+  document.getElementById('icon-pause').style.display = '';
 });
+audioEl.addEventListener('pause', () => {
+  document.getElementById('icon-play').style.display = '';
+  document.getElementById('icon-pause').style.display = 'none';
+});
+audioEl.addEventListener('timeupdate', () => {
+  const pct = audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('time-cur').textContent = fmtTime(audioEl.currentTime);
+  document.getElementById('time-total').textContent = fmtTime(audioEl.duration);
+});
+audioEl.addEventListener('ended', () => {
+  if (currentIndex < currentQueue.length - 1) {
+    currentIndex++;
+    playSong(currentQueue[currentIndex].videoId, currentQueue, currentIndex);
+  }
+});
+
+// ---- Controls ----
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (audioEl.paused) audioEl.play(); else audioEl.pause();
+});
+document.getElementById('btn-next').addEventListener('click', () => {
+  if (currentIndex < currentQueue.length - 1) {
+    currentIndex++;
+    playSong(currentQueue[currentIndex].videoId, currentQueue, currentIndex);
+  }
+});
+document.getElementById('btn-prev').addEventListener('click', () => {
+  if (audioEl.currentTime > 3) { audioEl.currentTime = 0; return; }
+  if (currentIndex > 0) {
+    currentIndex--;
+    playSong(currentQueue[currentIndex].videoId, currentQueue, currentIndex);
+  }
+});
+
+document.getElementById('progress-bar').addEventListener('click', function(e) {
+  if (!audioEl.duration) return;
+  const rect = this.getBoundingClientRect();
+  audioEl.currentTime = ((e.clientX - rect.left) / rect.width) * audioEl.duration;
+});
+
+document.getElementById('volume-slider').addEventListener('input', function() {
+  audioEl.volume = parseFloat(this.value);
+});
+
+// ---- Init ----
+loadHome();
 </script>
 </body>
 </html>
