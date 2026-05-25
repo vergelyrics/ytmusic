@@ -680,6 +680,77 @@ body {
 <audio id="audio-el"></audio>
 
 <script>
+// ---- ROUTER ----
+
+function goTo(path) {
+  history.pushState({}, '', path);
+  handleRoute();
+}
+
+window.addEventListener('popstate', handleRoute);
+
+function handleRoute() {
+  const path = location.pathname;
+
+  // HOME
+  if (path === '/') {
+    activatePage('home');
+    return;
+  }
+
+  // SEARCH
+  if (path === '/search') {
+    activatePage('search');
+    return;
+  }
+
+  // QUEUE
+  if (path === '/queue') {
+    activatePage('queue');
+    return;
+  }
+
+  // ALBUM
+  if (path.startsWith('/album/')) {
+    const id = path.split('/album/')[1];
+    loadAlbum(id);
+    return;
+  }
+
+  // ARTIST
+  if (path.startsWith('/artist/')) {
+    const id = path.split('/artist/')[1];
+    loadArtist(id);
+    return;
+  }
+
+  // PLAYLIST
+  if (path.startsWith('/playlist/')) {
+    const id = path.split('/playlist/')[1];
+    loadPlaylist(id);
+    return;
+  }
+
+  activatePage('home');
+}
+
+function activatePage(page) {
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active');
+  });
+
+  document.querySelectorAll('.nav-container a').forEach(a => {
+    a.classList.remove('active');
+  });
+
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) pageEl.classList.add('active');
+
+  const navEl = document.querySelector(`[data-page="${page}"]`);
+  if (navEl) navEl.classList.add('active');
+}
+
+  
 const API = 'https://yt-music-api.vergelyrics.workers.dev';
 
 // ---- State ----
