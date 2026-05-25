@@ -597,16 +597,16 @@ body {
   <div id="sidebar">
     <div class="logo">Wave<span>ify</span></div>
     <div class="nav-container">
-      <a href="#" class="active" data-page="home" onclick="navigate('home',this)">
+      <a href="#" class="active" data-page="home" onclick="navigate('home')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <span>Home</span>
       </a>
-      <a href="#" data-page="search" onclick="navigate('search',this)">
+      <a href="#" data-page="search" onclick="navigate('search')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <span>Search</span>
       </a>
       <div class="nav-section">Library</div>
-      <a href="#" data-page="queue" onclick="navigate('queue',this)">
+      <a href="#" data-page="queue" onclick="navigate('queue')">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         <span>Queue</span>
       </a>
@@ -680,6 +680,77 @@ body {
 <audio id="audio-el"></audio>
 
 <script>
+// ---- ROUTER ----
+
+function goTo(path) {
+  history.pushState({}, '', path);
+  handleRoute();
+}
+
+window.addEventListener('popstate', handleRoute);
+
+function handleRoute() {
+  const path = location.pathname;
+
+  // HOME
+  if (path === '/') {
+    activatePage('home');
+    return;
+  }
+
+  // SEARCH
+  if (path === '/search') {
+    activatePage('search');
+    return;
+  }
+
+  // QUEUE
+  if (path === '/queue') {
+    activatePage('queue');
+    return;
+  }
+
+  // ALBUM
+  if (path.startsWith('/album/')) {
+    const id = path.split('/album/')[1];
+    loadAlbum(id);
+    return;
+  }
+
+  // ARTIST
+  if (path.startsWith('/artist/')) {
+    const id = path.split('/artist/')[1];
+    loadArtist(id);
+    return;
+  }
+
+  // PLAYLIST
+  if (path.startsWith('/playlist/')) {
+    const id = path.split('/playlist/')[1];
+    loadPlaylist(id);
+    return;
+  }
+
+  activatePage('home');
+}
+
+function activatePage(page) {
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active');
+  });
+
+  document.querySelectorAll('.nav-container a').forEach(a => {
+    a.classList.remove('active');
+  });
+
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) pageEl.classList.add('active');
+
+  const navEl = document.querySelector(`[data-page="${page}"]`);
+  if (navEl) navEl.classList.add('active');
+}
+
+  
 const API = 'https://yt-music-api.vergelyrics.workers.dev';
 
 // ---- State ----
@@ -689,11 +760,14 @@ let searchTimer = null;
 let audioEl = document.getElementById('audio-el');
 
 // ---- Navigation ----
-function navigate(page, el) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-container a').forEach(a => a.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
-  if (el) el.classList.add('active');
+function navigate(page) {
+  const routes = {
+    home: '/',
+    search: '/search',
+    queue: '/queue'
+  };
+
+  goTo(routes[page] || '/');
 }
 
 function showDetail() {
@@ -779,14 +853,25 @@ function cardHTML(item) {
 // ---- Card / Item Clicks ----
 function handleCardClick(item) {
   if (!item) return;
+
   if (item.type === 'song' || item.type === 'video') {
     playSong(item.videoId, [item], 0);
-  } else if (item.type === 'album' || item.type === 'ep' || item.type === 'single') {
-    loadAlbum(item.browseId);
-  } else if (item.type === 'artist') {
-    loadArtist(item.browseId);
-  } else if (item.type === 'playlist') {
-    loadPlaylist(item.playlistId);
+  }
+
+  else if (
+    item.type === 'album' ||
+    item.type === 'ep' ||
+    item.type === 'single'
+  ) {
+    goTo(`/album/${item.browseId}`);
+  }
+
+  else if (item.type === 'artist') {
+    goTo(`/artist/${item.browseId}`);
+  }
+
+  else if (item.type === 'playlist') {
+    goTo(`/playlist/${item.playlistId}`);
   }
 }
 
@@ -1167,7 +1252,9 @@ document.getElementById('volume-slider').addEventListener('input', function() {
 });
 
 // ---- Init ----
-loadHome();
+loadHome().then(() => {
+  handleRoute();
+});
 </script>
 </body>
 </html>
