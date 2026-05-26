@@ -192,6 +192,7 @@ function renderHome(sections) {
     return `<div class="section">
       <div class="section-header">
         <h2 class="section-title">${escHtml(section.title || '')}</h2>
+        ${section.browseId ? `<a class="section-more" href="/album/${escHtml(section.browseId)}">More</a>` : ''}
       </div>
       <div class="shelf">${section.items.map(renderCard).join('')}</div>
     </div>`;
@@ -266,6 +267,7 @@ function renderArtist(data) {
       <div class="artist-header-gradient"></div>
       <div class="artist-header-content">
         <h1 class="artist-name">${escHtml(data.name || '')}</h1>
+        ${data.description ? `<p class="artist-followers">${escHtml(data.description.slice(0,120))}${data.description.length > 120 ? '…' : ''}</p>` : ''}
       </div>
     </div>
     <div class="artist-body">${sections}</div>
@@ -302,10 +304,12 @@ function renderAlbum(data) {
     <div class="collection-header">
       <div class="collection-art">${data.thumbnail ? `<img src="${escHtml(data.thumbnail)}" alt="" />` : ''}</div>
       <div class="collection-meta">
+        <div class="collection-type">Album</div>
         <h1 class="collection-title">${escHtml(data.title || '')}</h1>
         <div class="collection-subtitle">${escHtml(subtitle)}</div>
         <div class="collection-actions">
           <button class="btn-play-all" data-queue='${escHtml(allIds)}'>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             Play all
           </button>
         </div>
@@ -324,12 +328,14 @@ function renderPlaylist(data, id) {
 
   return `<div class="collection-page">
     <div class="collection-header">
-      <div class="collection-art">${data.thumbnail ? `<img src="${escHtml(data.thumbnail)}" alt="" />` : ''}</div>
+      <div class="collection-art">${data.thumbnail ? `<img src="${escHtml(data.thumbnail)}" alt="" />` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted)"><svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg></div>'}</div>
       <div class="collection-meta">
+        <div class="collection-type">Playlist</div>
         <h1 class="collection-title">${escHtml(data.title || 'Playlist')}</h1>
         ${subtitle ? `<div class="collection-subtitle">${escHtml(subtitle)}</div>` : ''}
         <div class="collection-actions">
           <button class="btn-play-all" data-queue='${escHtml(allIds)}'>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             Play all
           </button>
         </div>
@@ -472,7 +478,9 @@ function updateProgress() {
 
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('progressThumb').style.left = pct + '%';
+    document.getElementById('expProgressFill').style.width = pct + '%';
     document.getElementById('currentTime').textContent = formatTime(cur);
+    document.getElementById('expCurrentTime').textContent = formatTime(cur);
   } catch {}
 }
 
@@ -480,6 +488,7 @@ function updateTotalTime() {
   try {
     const dur = state.player?.getDuration() || 0;
     document.getElementById('totalTime').textContent = formatTime(dur);
+    document.getElementById('expTotalTime').textContent = formatTime(dur);
   } catch {}
 }
 
@@ -492,10 +501,8 @@ function formatTime(s) {
 
 function updatePlayUI() {
   const playing = state.isPlaying;
-  const playIcon = document.querySelector('#playPauseBtn .icon-play');
-  const pauseIcon = document.querySelector('#playPauseBtn .icon-pause');
-  if (playIcon) playIcon.style.display = playing ? 'none' : 'block';
-  if (pauseIcon) pauseIcon.style.display = playing ? 'block' : 'none';
+  [document.querySelector('#playPauseBtn .icon-play'), document.querySelector('#expPlayPause .icon-play')].forEach(el => { if(el) el.style.display = playing ? 'none' : 'block'; });
+  [document.querySelector('#playPauseBtn .icon-pause'), document.querySelector('#expPlayPause .icon-pause')].forEach(el => { if(el) el.style.display = playing ? 'block' : 'none'; });
 }
 
 async function playSong(song, queueIds = []) {
@@ -509,21 +516,27 @@ async function playSong(song, queueIds = []) {
   state.currentSong = song;
   document.getElementById('playerTitle').textContent = song.title || '';
   document.getElementById('playerArtist').textContent = song.artist || '';
+  document.getElementById('expTitle').textContent = song.title || '';
+  document.getElementById('expArtist').textContent = song.artist || '';
 
   if (song.thumbnail) {
     document.getElementById('playerThumb').src = song.thumbnail;
+    document.getElementById('expThumb').src = song.thumbnail;
   }
 
   // Reset progress
   document.getElementById('progressFill').style.width = '0%';
   document.getElementById('progressThumb').style.left = '0%';
+  document.getElementById('expProgressFill').style.width = '0%';
   document.getElementById('currentTime').textContent = '0:00';
+  document.getElementById('expCurrentTime').textContent = '0:00';
 
   // Load song data for queue
   loadSongData(song.videoId, queueIds);
 
   // Play via YouTube IFrame
   if (!state.playerReady) {
+    // Wait for player ready
     const check = setInterval(() => {
       if (state.playerReady) {
         clearInterval(check);
@@ -548,14 +561,82 @@ async function loadSongData(videoId, hintQueueIds = []) {
     state.queueIndex = queueRaw.findIndex(t => t?.videoId === videoId);
     if (state.queueIndex < 0) state.queueIndex = 0;
 
+    renderQueue(queueRaw, state.queueIndex);
+    renderRelated(data.related || []);
+
+    if (data.lyrics) {
+      document.getElementById('expLyricsText').textContent = data.lyrics;
+    } else {
+      document.getElementById('expLyricsText').textContent = 'No lyrics available.';
+    }
+
     // Update thumbnail to best quality
     const bestThumb = data.thumbnails?.at(-1)?.url || state.currentSong?.thumbnail;
     if (bestThumb) {
       document.getElementById('playerThumb').src = bestThumb;
+      document.getElementById('expThumb').src = bestThumb;
+      if (document.getElementById('expBackdrop')) {
+        document.getElementById('expBackdrop').style.background = `linear-gradient(135deg, rgba(0,0,0,0.9), rgba(15,15,15,0.97)), url('${bestThumb}') center/cover`;
+      }
     }
   } catch (e) {
     console.error('Failed to load song data', e);
   }
+}
+
+function renderQueue(tracks, activeIndex) {
+  const el = document.getElementById('expQueueList');
+  if (!el) return;
+  el.innerHTML = tracks.map((track, i) => {
+    if (!track) return '';
+    const isActive = i === activeIndex;
+    const artist = track.artists ? track.artists.map(a => a.name).join(', ') : (track.subtitle || '');
+    return `<div class="queue-item${isActive ? ' active' : ''}" data-index="${i}" data-videoid="${escHtml(track.videoId)}" data-title="${escHtml(track.title)}" data-artist="${escHtml(artist)}" data-thumb="${escHtml(track.thumbnail||'')}">
+      <div class="queue-thumb-wrap">
+        ${track.thumbnail ? `<img class="queue-thumb" src="${escHtml(track.thumbnail)}" alt="" loading="lazy" />` : ''}
+        ${isActive ? `<div class="queue-now-playing"><div class="now-playing-bars"><span></span><span></span><span></span></div></div>` : ''}
+      </div>
+      <div class="queue-info">
+        <div class="queue-title">${escHtml(track.title)}</div>
+        <div class="queue-artist">${escHtml(artist)}</div>
+      </div>
+      <span class="queue-duration">${escHtml(track.duration || '')}</span>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.queue-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const idx = parseInt(item.dataset.index);
+      state.queueIndex = idx;
+      const track = state.queue[idx];
+      if (track?.videoId) {
+        playSong({ videoId: track.videoId, title: track.title, artist: item.dataset.artist, thumbnail: item.dataset.thumb });
+      }
+    });
+  });
+}
+
+function renderRelated(tracks) {
+  const el = document.getElementById('expRelatedList');
+  if (!el) return;
+  el.innerHTML = tracks.map((track, i) => {
+    if (!track) return '';
+    const artist = track.artists ? track.artists.map(a => a.name).join(', ') : (track.subtitle || '');
+    return `<div class="queue-item" data-videoid="${escHtml(track.videoId)}" data-title="${escHtml(track.title)}" data-artist="${escHtml(artist)}" data-thumb="${escHtml(track.thumbnail||'')}">
+      <div class="queue-thumb-wrap">${track.thumbnail ? `<img class="queue-thumb" src="${escHtml(track.thumbnail)}" alt="" loading="lazy" />` : ''}</div>
+      <div class="queue-info">
+        <div class="queue-title">${escHtml(track.title)}</div>
+        <div class="queue-artist">${escHtml(artist)}</div>
+      </div>
+      <span class="queue-duration">${escHtml(track.duration || '')}</span>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.queue-item').forEach(item => {
+    item.addEventListener('click', () => {
+      playSong({ videoId: item.dataset.videoid, title: item.dataset.title, artist: item.dataset.artist, thumbnail: item.dataset.thumb });
+    });
+  });
 }
 
 function playNext() {
@@ -586,13 +667,17 @@ function playPrev() {
 function initControls() {
   // Play/Pause
   document.getElementById('playPauseBtn').addEventListener('click', togglePlay);
+  document.getElementById('expPlayPause').addEventListener('click', togglePlay);
 
   // Next / Prev
   document.getElementById('nextBtn').addEventListener('click', playNext);
   document.getElementById('prevBtn').addEventListener('click', playPrev);
+  document.getElementById('expNext').addEventListener('click', playNext);
+  document.getElementById('expPrev').addEventListener('click', playPrev);
 
   // Progress bar
   document.getElementById('progressBar').addEventListener('click', e => seekTo(e, 'progressBar'));
+  document.getElementById('expProgressBar').addEventListener('click', e => seekTo(e, 'expProgressBar'));
 
   // Volume
   document.getElementById('volumeSlider').addEventListener('input', e => {
@@ -612,12 +697,51 @@ function initControls() {
     }
   });
 
-  // Action buttons - Optional placeholders for expansion features
+  // Expand / collapse player
   document.getElementById('expandPlayer').addEventListener('click', () => {
-    console.log("Expand Player Clicked");
+    document.getElementById('expandedPlayer').style.display = 'flex';
   });
+  document.getElementById('collapsePlayer').addEventListener('click', () => {
+    document.getElementById('expandedPlayer').style.display = 'none';
+  });
+  // Click on thumbnail to expand
+  document.getElementById('playerThumb').addEventListener('click', () => {
+    document.getElementById('expandedPlayer').style.display = 'flex';
+  });
+  document.getElementById('playerTitle').addEventListener('click', () => {
+    document.getElementById('expandedPlayer').style.display = 'flex';
+  });
+
+  // Expanded tabs
+  document.querySelectorAll('.exp-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.exp-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const panels = { queue: 'expQueuePanel', related: 'expRelatedPanel', lyrics: 'expLyricsPanel' };
+      Object.values(panels).forEach(p => document.getElementById(p).style.display = 'none');
+      const panel = panels[tab.dataset.tab];
+      if (panel) document.getElementById(panel).style.display = 'block';
+    });
+  });
+
+  // Lyrics btn
   document.getElementById('lyricsBtn').addEventListener('click', () => {
-    console.log("Lyrics Button Clicked");
+    document.getElementById('expandedPlayer').style.display = 'flex';
+    document.querySelectorAll('.exp-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('[data-tab="lyrics"]').classList.add('active');
+    document.getElementById('expQueuePanel').style.display = 'none';
+    document.getElementById('expRelatedPanel').style.display = 'none';
+    document.getElementById('expLyricsPanel').style.display = 'block';
+  });
+
+  // Queue btn
+  document.getElementById('queueBtn').addEventListener('click', () => {
+    document.getElementById('expandedPlayer').style.display = 'flex';
+    document.querySelectorAll('.exp-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('[data-tab="queue"]').classList.add('active');
+    document.getElementById('expQueuePanel').style.display = 'block';
+    document.getElementById('expRelatedPanel').style.display = 'none';
+    document.getElementById('expLyricsPanel').style.display = 'none';
   });
 }
 
@@ -643,7 +767,10 @@ function seekTo(e, barId) {
 function initSearch() {
   const input = document.getElementById('searchInput');
   const clear = document.getElementById('searchClear');
+  const submit = document.getElementById('searchSubmit');
   const suggestions = document.getElementById('searchSuggestions');
+  const navSearchIcon = document.getElementById('navSearchIcon');
+  const searchBackBtn = document.getElementById('searchBackBtn');
 
   let suggestTimeout = null;
 
@@ -667,6 +794,11 @@ function initSearch() {
       hideSuggestions();
       input.blur();
     }
+  });
+
+  submit.addEventListener('click', () => {
+    hideSuggestions();
+    doSearch(input.value.trim());
   });
 
   clear.addEventListener('click', () => {
@@ -703,10 +835,8 @@ function initSearch() {
   }
 
   function hideSuggestions() {
-    if(suggestions) {
-      suggestions.classList.remove('visible');
-      suggestions.innerHTML = '';
-    }
+    suggestions.classList.remove('visible');
+    suggestions.innerHTML = '';
   }
 
   function doSearch(q) {
@@ -723,6 +853,8 @@ function initSearch() {
     if (window.location.pathname.startsWith('/search') && q) {
       input.value = q;
       clear.classList.toggle('visible', q.length > 0);
+    } else if (!window.location.pathname.startsWith('/search')) {
+      // keep input as is
     }
     origDispatch();
   };
@@ -733,18 +865,13 @@ function initSidebar() {
   document.getElementById('sidebarToggle').addEventListener('click', () => {
     const sidebar = document.getElementById('sidebar');
     const main = document.getElementById('main');
-    
-    // Toggle mini mode logic for sidebar
-    if (sidebar.style.width === 'var(--sidebar-mini)') {
-      sidebar.style.width = 'var(--sidebar-width)';
-      main.style.left = 'var(--sidebar-width)';
-      document.querySelectorAll('.sidebar-item span').forEach(el => el.style.display = '');
-      document.querySelector('.sidebar-promo').style.display = '';
+    sidebar.classList.toggle('hidden');
+    if (sidebar.classList.contains('hidden')) {
+      sidebar.style.display = 'none';
+      main.classList.add('no-sidebar');
     } else {
-      sidebar.style.width = 'var(--sidebar-mini)';
-      main.style.left = 'var(--sidebar-mini)';
-      document.querySelectorAll('.sidebar-item span').forEach(el => el.style.display = 'none');
-      document.querySelector('.sidebar-promo').style.display = 'none';
+      sidebar.style.display = '';
+      main.classList.remove('no-sidebar');
     }
   });
 
@@ -752,9 +879,19 @@ function initSidebar() {
   document.querySelectorAll('.sidebar-item').forEach(item => {
     item.addEventListener('click', e => {
       e.preventDefault();
+      const page = item.dataset.page;
       const href = item.getAttribute('href');
       navigate(href || '/');
     });
+  });
+
+  // Section "more" links
+  document.addEventListener('click', e => {
+    const more = e.target.closest('.section-more');
+    if (more) {
+      e.preventDefault();
+      navigate(more.getAttribute('href'));
+    }
   });
 }
 
