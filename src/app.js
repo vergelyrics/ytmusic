@@ -1,6 +1,5 @@
 /* ============================================================
-   YouTube Music Clone - app.js
-   API: https://yt-music-api.vergelyrics.workers.dev/
+   VergeLyrics - app.js (Updated for Pagination & Chips)
    ============================================================ */
 
 const API = 'https://yt-music-api.vergelyrics.workers.dev';
@@ -16,148 +15,182 @@ const state = {
   duration: 0,
   currentTime: 0,
   volume: 100,
+  nextContinuation: null,
+  loadingMore: false
 };
 
 // ============ ROUTER ============
 const router = {
-  routes: {
-    '/': 'home',
-    '/search': 'search',
-    '/artist': 'artist',
-    '/album': 'album',
-    '/playlist': 'playlist',
-    '/song': 'song',
-  },
-  current: null,
-
   init() {
     window.addEventListener('popstate', () => this.dispatch());
     this.dispatch();
   },
-
   dispatch() {
     const path = window.location.pathname;
     const params = new URLSearchParams(window.location.search);
-
-    // Reset sidebar active state
     document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
 
     if (path === '/') {
       document.querySelector('[data-page="home"]')?.classList.add('active');
       pages.home();
     } else if (path.startsWith('/search')) {
-      document.querySelector('[data-page="explore"]')?.classList.add('active');
       pages.search(params.get('q') || '');
     } else if (path.startsWith('/artist/')) {
-      const id = path.replace('/artist/', '').split('?')[0];
-      pages.artist(id);
+      pages.artist(path.replace('/artist/', '').split('?')[0]);
     } else if (path.startsWith('/album/')) {
-      const id = path.replace('/album/', '').split('?')[0];
-      pages.album(id);
+      pages.album(path.replace('/album/', '').split('?')[0]);
     } else if (path.startsWith('/playlist/')) {
-      const id = path.replace('/playlist/', '').split('?')[0];
-      pages.playlist(id);
+      pages.playlist(path.replace('/playlist/', '').split('?')[0]);
     } else {
       pages.home();
     }
   },
-
   push(path) {
     history.pushState(null, '', path);
     this.dispatch();
   }
 };
 
-function navigate(path) {
-  router.push(path);
-}
+function navigate(path) { router.push(path); }
 
 // ============ API ============
-async function api(endpoint) {
-  const res = await fetch(`${API}${endpoint}`);
+async function api(endpoint, params = {}) {
+  const url = new URL(`${API}${endpoint}`);
+  Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
 
 // ============ PAGES ============
 const pages = {
-  async home() {
+  async home(params = {}) {
     const el = document.getElementById('pageContent');
-    el.innerHTML = `<div class="home-page fade-in"><div class="loading"><div class="spinner"></div></div></div>`;
+    el.innerHTML = `<div class="home-page"><div class="loading"><div class="spinner"></div></div></div>`;
     try {
-      const data = await api('/home');
-      el.innerHTML = renderHome(data);
+      const data = await api('/home', params);
+      state.nextContinuation = data.continuation;
+      
+      let html = `<div class="home-page">`;
+      if (data.chips?.length) {
+        html += `<div class="chip-cloud">${data.chips.map(c => 
+          `<button class="chip ${c.isSelected ? 'active' : ''}" data-params="${c.params || ''}">${escHtml(c.title)}</button>`
+        ).join('')}</div>`;
+      }
+      html += `<div id="homeSections">${renderSections(data.sections)}</div></div>`;
+      el.innerHTML = html;
+      bindHomeEvents();
       bindCardEvents();
     } catch (e) {
-      el.innerHTML = `<div class="home-page"><div class="empty-state"><p>Failed to load. Please try again.</p></div></div>`;
+      el.innerHTML = `<div class="home-page"><div class="empty-state"><p>Failed to load.</p></div></div>`;
     }
   },
 
   async search(query) {
     const el = document.getElementById('pageContent');
-    if (!query) {
-      el.innerHTML = `<div class="search-page fade-in"><div class="empty-state"><svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><p>Search YouTube Music</p></div></div>`;
-      return;
-    }
-    el.innerHTML = `<div class="search-page fade-in"><div class="loading"><div class="spinner"></div></div></div>`;
+    if (!query) return el.innerHTML = `<div class="search-page"><p>Search something...</p></div>`;
+    el.innerHTML = `<div class="search-page"><div class="loading"><div class="spinner"></div></div></div>`;
     try {
-      const data = await api(`/search?q=${encodeURIComponent(query)}`);
+      const data = await api(`/search`, { q: query });
       el.innerHTML = renderSearch(query, data);
       bindResultEvents();
-    } catch (e) {
-      el.innerHTML = `<div class="search-page"><div class="empty-state"><p>Search failed. Please try again.</p></div></div>`;
-    }
+    } catch (e) { el.innerHTML = `<p>Search failed.</p>`; }
   },
 
-  async artist(id) {
+  async artist(id) { 
     const el = document.getElementById('pageContent');
-    el.innerHTML = `<div class="loading" style="height:300px"><div class="spinner"></div></div>`;
+    el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
     try {
-      const data = await api(`/artist?id=${encodeURIComponent(id)}`);
+      const data = await api(`/artist`, { id: id });
       el.innerHTML = renderArtist(data);
       bindCardEvents();
       bindTrackEvents();
-    } catch (e) {
-      el.innerHTML = `<div class="empty-state"><p>Failed to load artist.</p></div>`;
-    }
+    } catch (e) { el.innerHTML = `<p>Failed to load artist.</p>`; }
   },
 
   async album(id) {
     const el = document.getElementById('pageContent');
-    el.innerHTML = `<div class="loading" style="height:300px"><div class="spinner"></div></div>`;
+    el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
     try {
-      const data = await api(`/album?id=${encodeURIComponent(id)}`);
+      const data = await api(`/album`, { id: id });
       el.innerHTML = renderAlbum(data);
       bindTrackEvents();
       bindCollectionPlayAll(data.tracks);
-    } catch (e) {
-      el.innerHTML = `<div class="empty-state"><p>Failed to load album.</p></div>`;
-    }
+    } catch (e) { el.innerHTML = `<p>Failed to load album.</p>`; }
   },
 
   async playlist(id) {
     const el = document.getElementById('pageContent');
-    el.innerHTML = `<div class="loading" style="height:300px"><div class="spinner"></div></div>`;
+    el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
     try {
-      const data = await api(`/playlist?id=${encodeURIComponent(id)}`);
+      const data = await api(`/playlist`, { id: id });
       el.innerHTML = renderPlaylist(data, id);
       bindTrackEvents();
       bindCollectionPlayAll(data.tracks || []);
-    } catch (e) {
-      el.innerHTML = `<div class="empty-state"><p>Failed to load playlist.</p></div>`;
-    }
-  },
+    } catch (e) { el.innerHTML = `<p>Failed to load playlist.</p>`; }
+  }
 };
 
-// ============ RENDERERS ============
-function thumb(url, fallbackIcon = '♪') {
-  if (url) return `<img class="card-thumb" src="${escHtml(url)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=card-thumb-placeholder>${fallbackIcon}</div>'" />`;
-  return `<div class="card-thumb-placeholder">${fallbackIcon}</div>`;
+// ============ HELPERS ============
+function renderSections(sections) {
+  if (!sections) return '';
+  return sections.map(section => {
+    if (!section || !section.items || !section.items.length) return '';
+    return `<div class="section">
+      <div class="section-header"><h2 class="section-title">${escHtml(section.title || '')}</h2></div>
+      <div class="shelf">${section.items.map(renderCard).join('')}</div>
+    </div>`;
+  }).join('');
 }
 
-function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function bindHomeEvents() {
+  document.querySelectorAll('.chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const params = btn.dataset.params;
+      pages.home(params ? { params } : {});
+    });
+  });
+
+  window.addEventListener('scroll', () => {
+    if (state.loadingMore || !state.nextContinuation) return;
+    if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
+      loadMoreHome();
+    }
+  });
 }
+
+async function loadMoreHome() {
+  state.loadingMore = true;
+  try {
+    const data = await api('/home', { continuation: state.nextContinuation });
+    state.nextContinuation = data.continuation;
+    const container = document.getElementById('homeSections');
+    container.insertAdjacentHTML('beforeend', renderSections(data.sections));
+    bindCardEvents();
+  } catch(e) { console.error("End of feed"); }
+  finally { state.loadingMore = false; }
+}
+
+// ============ OTHER RENDERERS ============
+function renderCard(item) {
+  const typeLabel = { song: 'Song', video: 'Video', album: 'Album', playlist: 'Playlist', artist: 'Artist' }[item.type] || '';
+  return `<div class="card" ${itemNavAttr(item)}>
+    <div class="card-thumb-wrap">${thumb(item.thumbnail)}</div>
+    <div class="card-title">${item.explicit ? '<span class="explicit-badge">E</span>' : ''}${escHtml(item.title)}</div>
+    <div class="card-subtitle">${escHtml(item.subtitle || typeLabel)}</div>
+  </div>`;
+}
+
+function itemNavAttr(item) {
+  if (item.videoId) return `data-videoid="${escHtml(item.videoId)}" data-title="${escHtml(item.title)}" data-thumb="${escHtml(item.thumbnail || '')}"`;
+  if (item.browseId && item.type === 'artist') return `data-nav="/artist/${escHtml(item.browseId)}"`;
+  if (item.browseId) return `data-nav="/album/${escHtml(item.browseId)}"`;
+  if (item.playlistId) return `data-nav="/playlist/${escHtml(item.playlistId)}"`;
+  return '';
+}
+
+function thumb(url) { return url ? `<img src="${escHtml(url)}" loading="lazy" />` : `<div class="card-thumb-placeholder">♪</div>`; }
+function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function itemNavAttr(item) {
   if (!item) return '';
